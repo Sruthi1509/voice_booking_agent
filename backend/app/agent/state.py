@@ -39,6 +39,7 @@ REQUIRED_FIELDS = [
     "date",
     "time",
     "load_description",
+    "country_code",
     "contact_number",
 ]
 

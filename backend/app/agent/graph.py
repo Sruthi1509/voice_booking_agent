@@ -66,6 +66,9 @@ def _resolve_field(name: str, raw_text: str) -> tuple[str | None, str | None, st
     if name == "date":
         value, err = validation.resolve_date(raw_text)
         return value, err, None
+    if name == "country_code":
+        value, err = validation.normalize_country_code(raw_text)
+        return value, err, None
     if name == "contact_number":
         value, err = validation.normalize_phone(raw_text)
         return value, err, None
@@ -134,12 +137,29 @@ def node_merge_and_validate(state: GraphState) -> GraphState:
             continue
 
         # confident value -> resolve/validate
-        value, err, extra_note = _resolve_field(name, raw_text)
+        if name == "contact_number":
+            country = booking.fields.get("country_code")
+            value, err = validation.normalize_phone(
+                raw_text, country.value if country else None
+            )
+            extra_note = None
+        else:
+            value, err, extra_note = _resolve_field(name, raw_text)
         booking.ambiguous_fields.pop(name, None)
 
         if err:
             # Don't destroy a previously-good value on a failed correction attempt.
             booking.validation_errors[name] = err
+            continue
+
+        # Models and speech recognition occasionally repeat a previously
+        # captured value. Keep the original field instead of treating this as
+        # a new correction or asking the user to confirm it again.
+        if (
+            name in booking.fields
+            and booking.fields[name].value == value
+            and not is_correction
+        ):
             continue
 
         was_confirmed_before = (
@@ -214,7 +234,15 @@ def node_decide(state: GraphState) -> GraphState:
 
     if state["intent"] == "unclear_or_silence":
         state["action"] = "handle_unclear"
-        state["action_context"] = {}
+        if booking.pending_confirmation_field:
+            state["action_context"] = {
+                "pending_field": booking.pending_confirmation_field,
+            }
+        else:
+            missing = booking.missing_required()
+            state["action_context"] = {
+                "next_missing_field": missing[0] if missing else None,
+            }
         return state
 
     if booking.validation_errors:

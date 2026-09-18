@@ -77,13 +77,15 @@ def test_past_date_rejected():
     print("OK: past date rejected via validation_errors, not silently accepted.")
 
 
-def test_today_and_explicit_past_date_rejected():
+def test_today_allowed_and_explicit_past_date_rejected():
     reference = datetime(2026, 9, 18, 12, 0)
-    for phrase in ("today", "15 September"):
-        value, error = validation.resolve_date(phrase, reference)
-        assert value is None
-        assert error and "after today" in error
-    print("OK: today and an already-passed date without a year are rejected.")
+    value, error = validation.resolve_date("today", reference)
+    assert value == "2026-09-18"
+    assert error is None
+    value, error = validation.resolve_date("15 September", reference)
+    assert value is None
+    assert error and "today's date or a future date" in error
+    print("OK: today is allowed and an already-passed date without a year is rejected.")
 
 
 def test_same_location_requires_one_explicit_confirmation():
@@ -169,7 +171,7 @@ if __name__ == "__main__":
     test_ambiguous_load_not_accepted_blindly()
     test_correction_overwrites_and_flags_confirm_back()
     test_past_date_rejected()
-    test_today_and_explicit_past_date_rejected()
+    test_today_allowed_and_explicit_past_date_rejected()
     test_same_location_requires_one_explicit_confirmation()
     test_same_location_no_reopens_drop_location()
     test_unserviceable_location_rejected()

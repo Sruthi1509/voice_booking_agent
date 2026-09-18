@@ -21,6 +21,7 @@ export function useSpeech() {
   const [status, setStatus] = useState<SpeechStatus>("idle");
   const [interimTranscript, setInterimTranscript] = useState("");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [supported, setSupported] = useState(true);
   const recognitionRef = useRef<any>(null);
   const stopRequestedRef = useRef(false);
@@ -144,6 +145,16 @@ export function useSpeech() {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
+      const voices = window.speechSynthesis.getVoices();
+      utterance.voice =
+        voices.find((voice) => /en-IN/i.test(voice.lang) && /(Google|Microsoft)/i.test(voice.name)) ||
+        voices.find((voice) => /en-IN/i.test(voice.lang)) ||
+        voices.find((voice) => /en-US|en-GB/i.test(voice.lang)) ||
+        null;
+      if (isMuted) {
+        resolve();
+        return;
+      }
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => {
         setIsSpeaking(false);
@@ -155,7 +166,7 @@ export function useSpeech() {
       };
       window.speechSynthesis.speak(utterance);
     });
-  }, []);
+  }, [isMuted]);
 
   const stopSpeaking = useCallback(() => {
     if ("speechSynthesis" in window) {
@@ -164,14 +175,26 @@ export function useSpeech() {
     }
   }, []);
 
+  const toggleMuted = useCallback(() => {
+    setIsMuted((muted) => {
+      if (!muted && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+      }
+      return !muted;
+    });
+  }, []);
+
   return {
     supported,
     status,
     interimTranscript,
     isSpeaking,
+    isMuted,
     listenOnce,
     stopListening,
     speak,
     stopSpeaking,
+    toggleMuted,
   };
 }

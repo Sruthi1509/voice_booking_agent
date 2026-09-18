@@ -27,7 +27,7 @@ def _get_client() -> Groq:
 
 _BOOKING_FIELD_NAMES = [
     "pickup_location", "drop_location", "date", "time",
-    "load_description", "contact_number", "special_instructions",
+    "load_description", "country_code", "contact_number", "special_instructions",
 ]
 
 _FIELD_ENTRY_SCHEMA = {

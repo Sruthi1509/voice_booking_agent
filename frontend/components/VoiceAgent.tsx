@@ -23,13 +23,16 @@ export default function VoiceAgent() {
     status,
     interimTranscript,
     isSpeaking,
+    isMuted,
     listenOnce,
     stopListening,
     speak,
     stopSpeaking,
+    toggleMuted,
   } = useSpeech();
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const hasInitializedRef = useRef(false);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -49,6 +52,8 @@ export default function VoiceAgent() {
   }, []);
 
   useEffect(() => {
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
     init();
   }, [init]);
 
@@ -169,7 +174,7 @@ export default function VoiceAgent() {
       <div className="flex items-center gap-3">
         <button
           onClick={handleMicPress}
-          disabled={busy || isComplete || !supported}
+          disabled={busy || !supported}
           className={`h-14 w-14 rounded-full flex items-center justify-center text-xl shrink-0 transition
             ${status === "listening" ? "bg-red-600 animate-pulse" : "bg-blue-600 hover:bg-blue-500"}
             disabled:opacity-40 disabled:cursor-not-allowed`}
@@ -185,22 +190,30 @@ export default function VoiceAgent() {
             : busy
             ? "Thinking…"
             : isComplete
-            ? "Booking complete."
+            ? "Booking confirmed — tap to contact support"
             : "Tap to speak"}
         </div>
+        <button
+          type="button"
+          onClick={toggleMuted}
+          className="ml-auto rounded-lg border border-neutral-700 px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-800"
+          aria-label={isMuted ? "Unmute assistant voice" : "Mute assistant voice"}
+        >
+          {isMuted ? "Unmute voice" : "Mute voice"}
+        </button>
       </div>
 
       <form onSubmit={handleManualSubmit} className="flex gap-2">
         <input
           value={manualInput}
           onChange={(e) => setManualInput(e.target.value)}
-          disabled={busy || isComplete}
+          disabled={busy}
           placeholder="Or type instead…"
           className="flex-1 rounded-lg bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm outline-none focus:border-blue-600"
         />
         <button
           type="submit"
-          disabled={busy || isComplete}
+          disabled={busy}
           className="rounded-lg bg-neutral-800 px-4 py-2 text-sm hover:bg-neutral-700 disabled:opacity-40"
         >
           Send

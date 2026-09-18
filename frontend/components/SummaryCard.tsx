@@ -8,6 +8,7 @@ const LABELS: Record<string, string> = {
   date: "Date",
   time: "Time",
   load_description: "What's being moved",
+  country_code: "Country code",
   contact_number: "Contact number",
   special_instructions: "Special instructions",
   suggested_vehicle: "Suggested vehicle",

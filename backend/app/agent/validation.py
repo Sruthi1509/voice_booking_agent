@@ -95,10 +95,10 @@ def resolve_date(raw_text: str, reference_dt: Optional[datetime] = None) -> tupl
     parsed_date = parsed.date()
     today = reference_dt.date()
 
-    if parsed_date <= today:
+    if parsed_date < today:
         return None, (
             f"That date ({parsed_date.isoformat()}) is in the past — "
-            f"Please schedule a date after today; {parsed_date.isoformat()} is not available."
+            "Sorry, that date has already passed. Please provide today's date or a future date."
         )
     if parsed_date > today + timedelta(days=60):
         # Not a hard error -- just flag, most booking apps only allow near-term slots.
@@ -130,7 +130,18 @@ def check_load_feasibility(raw_description: str) -> tuple[Optional[str], Optiona
     return None, None
 
 
-def normalize_phone(raw_text: str) -> tuple[Optional[str], Optional[str]]:
+def normalize_country_code(raw_text: str) -> tuple[Optional[str], Optional[str]]:
+    """Normalize an international calling code into E.164 prefix form."""
+    digits = re.sub(r"\D", "", raw_text)
+    if 1 <= len(digits) <= 3 and digits != "0":
+        return f"+{digits}", None
+    return None, (
+        f"'{raw_text}' is not a valid country calling code. "
+        "Please provide the code with one to three digits, for example +91."
+    )
+
+
+def normalize_phone(raw_text: str, country_code: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     """Extract a plausible phone number from noisy STT text.
     STT frequently renders numbers as words ('nine eight seven...') or with
     stray words/pauses mixed in, so we strip non-digits and validate length."""
@@ -146,11 +157,28 @@ def normalize_phone(raw_text: str) -> tuple[Optional[str], Optional[str]]:
         if len(spelled) >= 10:
             digits = spelled
 
+    normalized_code = (country_code or "").lstrip("+")
+    if normalized_code:
+        if raw_text.strip().startswith("+"):
+            if not digits.startswith(normalized_code):
+                return None, (
+                    f"That number does not start with the country code +{normalized_code}. "
+                    "Please provide the complete number including the correct country code."
+                )
+            national_digits = digits[len(normalized_code):]
+        else:
+            national_digits = digits
+        if 6 <= len(national_digits) <= 14:
+            return f"+{normalized_code}{national_digits}", None
+        return None, (
+            f"That phone number is incomplete for country code +{normalized_code}. "
+            "Please provide the remaining national number."
+        )
     if len(digits) == 10:
         return digits, None
     if len(digits) == 12 and digits.startswith("91"):
         return digits[2:], None
     return None, (
-        f"I heard '{raw_text}', which doesn't look like a complete 10-digit "
-        f"phone number. Could you repeat it, ideally digit by digit?"
+        f"The number '{raw_text}' is incomplete. Please provide your country code first, "
+        "then the full phone number."
     )
