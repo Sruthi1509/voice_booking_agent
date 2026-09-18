@@ -97,6 +97,9 @@ class BookingState:
     consecutive_off_topic_turns: int = 0
 
     ended: bool = False
+    # Turn index when the booking was confirmed; used so later help turns
+    # do not replay the "booking confirmed" speech.
+    completed_turn: Optional[int] = None
 
     # ---- derived helpers -------------------------------------------------
 

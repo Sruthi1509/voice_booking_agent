@@ -34,11 +34,29 @@ OVERSIZED_LOAD_PATTERNS = [
     r"\bwarehouse\b", r"\bshipping container\b",
 ]
 
+# Common speech-to-text confusions for household items being moved.
+ITEM_HOMOPHONES = {
+    "share": "chair",
+    "shares": "chairs",
+    "cheer": "chair",
+    "cheers": "chairs",
+    "sheer": "chair",
+    "chear": "chair",
+    "chears": "chairs",
+    "shair": "chair",
+    "sofer": "sofa",
+    "sofar": "sofa",
+    "bridge": "fridge",
+    "frig": "fridge",
+    "frige": "fridge",
+}
+
 VEHICLE_TIERS = [
     # (keyword patterns, vehicle label, rough capacity note)
     (["bike", "scooter", "envelope", "document", "small bag", "couple of boxes",
       "few boxes", "one box"], "Two-wheeler", "up to ~20kg"),
-    (["fridge", "washing machine", "sofa", "1bhk", "few pieces of furniture",
+    (["fridge", "washing machine", "sofa", "chair", "chairs", "table",
+      "1bhk", "few pieces of furniture",
       "appliance", "study table", "mattress"], "Mini-van (Tata Ace class)", "up to ~750kg"),
     (["2bhk", "3bhk", "house shift", "moving house", "multiple rooms",
       "office shift", "several furniture"], "Mini-truck", "up to ~1500kg"),
@@ -107,6 +125,55 @@ def resolve_date(raw_text: str, reference_dt: Optional[datetime] = None) -> tupl
             f"bookings within the next 60 days. Could you pick a nearer date?"
         )
     return parsed_date.isoformat(), None
+
+
+def correct_item_homophones(raw_text: str) -> str:
+    """Rewrite likely STT mistakes for items people typically move."""
+    words = re.findall(r"[A-Za-z]+|[^A-Za-z]+", raw_text)
+    corrected: list[str] = []
+    for word in words:
+        key = word.lower()
+        replacement = ITEM_HOMOPHONES.get(key)
+        if replacement:
+            corrected.append(replacement if word.islower() else replacement.capitalize())
+        else:
+            corrected.append(word)
+    return "".join(corrected)
+
+
+def collapse_repeated_phrase(raw_text: str) -> str:
+    """Keep a single copy when the same item/phrase is spoken twice."""
+    words = [w for w in raw_text.split() if w]
+    if not words:
+        return raw_text.strip()
+
+    collapsed: list[str] = []
+    for word in words:
+        if not collapsed or collapsed[-1].lower() != word.lower():
+            collapsed.append(word)
+
+    n = len(collapsed)
+    if n >= 2 and n % 2 == 0:
+        half = n // 2
+        first = [w.lower() for w in collapsed[:half]]
+        second = [w.lower() for w in collapsed[half:]]
+        if first == second:
+            collapsed = collapsed[:half]
+    return " ".join(collapsed)
+
+
+def is_repeated_value(existing: str, incoming: str) -> bool:
+    """True when incoming is the same fact said again, not a new value."""
+    old = collapse_repeated_phrase(existing).strip().lower()
+    new = collapse_repeated_phrase(incoming).strip().lower()
+    if not old or not new:
+        return False
+    if old == new:
+        return True
+    if new == f"{old} {old}":
+        return True
+    leftover = new.replace(old, " ").strip()
+    return leftover in ("", old)
 
 
 def check_load_feasibility(raw_description: str) -> tuple[Optional[str], Optional[str]]:

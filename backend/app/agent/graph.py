@@ -30,6 +30,10 @@ from .state import (
 )
 
 LOCATION_FIELDS = {"pickup_location", "drop_location"}
+SUPPORT_PHONE = "1800 208 4455"
+LOCATION_CHANGE_WORDS = (
+    "location", "pickup", "pick up", "drop", "address", "place",
+)
 
 
 class GraphState(TypedDict):
@@ -73,8 +77,11 @@ def _resolve_field(name: str, raw_text: str) -> tuple[str | None, str | None, st
         value, err = validation.normalize_phone(raw_text)
         return value, err, None
     if name == "load_description":
-        vehicle, err = validation.check_load_feasibility(raw_text)
-        return raw_text, err, vehicle
+        cleaned = validation.collapse_repeated_phrase(
+            validation.correct_item_homophones(raw_text)
+        )
+        vehicle, err = validation.check_load_feasibility(cleaned)
+        return cleaned, err, vehicle
     # time, special_instructions: free text, no hard validation
     return raw_text, None, None
 
@@ -120,9 +127,15 @@ def node_merge_and_validate(state: GraphState) -> GraphState:
     if intent == "confirmation_yes" and booking.stage == Stage.CONFIRMING_SUMMARY:
         booking.stage = Stage.COMPLETE
         booking.ended = True
+        booking.completed_turn = booking.turn_count
 
     if intent == "confirmation_no" and booking.stage == Stage.CONFIRMING_SUMMARY:
         booking.stage = Stage.COLLECTING
+
+    # After a booking is confirmed, keep listening for help but do not
+    # overwrite locked details such as pickup or drop location.
+    if booking.ended:
+        return state
 
     # --- merge extracted fields ---
     for name, info in raw_fields.items():
@@ -155,10 +168,15 @@ def node_merge_and_validate(state: GraphState) -> GraphState:
         # Models and speech recognition occasionally repeat a previously
         # captured value. Keep the original field instead of treating this as
         # a new correction or asking the user to confirm it again.
+        existing = booking.fields.get(name)
         if (
-            name in booking.fields
-            and booking.fields[name].value == value
+            existing
             and not is_correction
+            and (
+                existing.value == value
+                or validation.is_repeated_value(str(existing.value), str(value))
+                or validation.is_repeated_value(existing.raw_text, raw_text)
+            )
         ):
             continue
 
@@ -219,29 +237,78 @@ def node_merge_and_validate(state: GraphState) -> GraphState:
 # ---------------------------------------------------------------------- #
 # Node 3: decide_next_action
 # ---------------------------------------------------------------------- #
+def _last_assistant_message(booking: BookingState) -> str:
+    for item in reversed(booking.history):
+        if item.get("role") == "assistant" and item.get("content"):
+            return item["content"]
+    return ""
+
+
+def _wants_location_change(state: GraphState, booking: BookingState) -> bool:
+    raw_fields = state.get("raw_fields") or {}
+    if any(name in LOCATION_FIELDS for name in raw_fields):
+        return True
+    if state.get("intent") == "correction":
+        return True
+    user_text = ""
+    for item in reversed(booking.history):
+        if item.get("role") == "user":
+            user_text = (item.get("content") or "").lower()
+            break
+    if not user_text:
+        return False
+    mentions_place = any(word in user_text for word in LOCATION_CHANGE_WORDS)
+    wants_change = any(
+        word in user_text
+        for word in ("change", "update", "different", "instead", "modify", "edit")
+    )
+    return mentions_place and wants_change
+
+
 def node_decide(state: GraphState) -> GraphState:
     booking = state["booking"]
 
     if booking.ended:
-        state["action"] = "complete"
-        state["action_context"] = {"summary": booking.to_summary_dict()}
+        if booking.completed_turn == booking.turn_count:
+            state["action"] = "complete"
+            state["action_context"] = {"summary": booking.to_summary_dict()}
+            return state
+        if state["intent"] == "unclear_or_silence":
+            state["action"] = "post_booking_idle"
+            state["action_context"] = {"support_number": SUPPORT_PHONE}
+            return state
+        if _wants_location_change(state, booking):
+            state["action"] = "handle_locked_booking"
+            state["action_context"] = {
+                "reason": "location_change",
+                "support_number": SUPPORT_PHONE,
+            }
+            return state
+        state["action"] = "post_booking_help"
+        state["action_context"] = {"support_number": SUPPORT_PHONE}
         return state
 
     if booking.consecutive_unclear_turns >= 3:
         state["action"] = "handle_repeated_silence"
-        state["action_context"] = {"attempts": booking.consecutive_unclear_turns}
+        state["action_context"] = {
+            "attempts": booking.consecutive_unclear_turns,
+            "previous_question": _last_assistant_message(booking),
+        }
         return state
 
     if state["intent"] == "unclear_or_silence":
         state["action"] = "handle_unclear"
+        previous_question = _last_assistant_message(booking)
         if booking.pending_confirmation_field:
             state["action_context"] = {
                 "pending_field": booking.pending_confirmation_field,
+                "previous_question": previous_question,
             }
         else:
             missing = booking.missing_required()
             state["action_context"] = {
                 "next_missing_field": missing[0] if missing else None,
+                "previous_question": previous_question,
             }
         return state
 
@@ -323,9 +390,11 @@ def node_finalize(state: GraphState) -> GraphState:
         for k, v in booking.to_summary_dict().items()
     )
     reply = (
-        "Great, your booking is confirmed! Here's the final summary:\n"
+        "Thank you, your booking is confirmed. Here's the final summary:\n"
         f"{summary_lines}\n"
-        "We'll notify you once a driver is assigned."
+        "I'll stay on the line if you need anything else. "
+        f"If you later need to change the pickup or drop location, "
+        f"please call customer support at {SUPPORT_PHONE}."
     )
     state["reply"] = reply
     booking.history.append({"role": "assistant", "content": reply})

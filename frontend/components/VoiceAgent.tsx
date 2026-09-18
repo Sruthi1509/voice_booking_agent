@@ -33,42 +33,51 @@ export default function VoiceAgent() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitializedRef = useRef(false);
+  const autoListenRef = useRef(true);
+  const sessionIdRef = useRef<string | null>(null);
+  const missingFieldsRef = useRef<string[]>([]);
+  const turnTokenRef = useRef(0);
+  const submitRef = useRef<(text: string, addToTranscript?: boolean) => Promise<void>>(
+    async () => undefined
+  );
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const init = useCallback(async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      const res = await startConversation();
-      applyResponse(res, true);
-    } catch (e: any) {
-      setError(e.message || "Failed to start conversation.");
-    } finally {
-      setBusy(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const listenAfterSpeech = useCallback(
+    async (agentMessage: string) => {
+      const token = ++turnTokenRef.current;
+      await speak(agentMessage);
+      if (token !== turnTokenRef.current) return;
+      if (!autoListenRef.current || !supported) return;
+      const transcript = await listenOnce({
+        itemHint: missingFieldsRef.current[0] === "load_description",
+      });
+      if (token !== turnTokenRef.current) return;
+      await submitRef.current(transcript);
+    },
+    [listenOnce, speak, supported]
+  );
 
-  useEffect(() => {
-    if (hasInitializedRef.current) return;
-    hasInitializedRef.current = true;
-    init();
-  }, [init]);
-
-  function applyResponse(res: TurnResponse, isFirst = false) {
-    setSessionId(res.session_id);
-    setFields(res.fields);
-    setMissingFields(res.missing_fields);
-    setIsComplete(res.is_complete);
-    setMessages((prev) => [...prev, { role: "assistant", content: res.agent_message }]);
-    speak(res.agent_message);
-  }
+  const applyResponse = useCallback(
+    (res: TurnResponse) => {
+      setSessionId(res.session_id);
+      sessionIdRef.current = res.session_id;
+      setFields(res.fields);
+      setMissingFields(res.missing_fields);
+      missingFieldsRef.current = res.missing_fields;
+      setIsComplete(res.is_complete);
+      setMessages((prev) => [...prev, { role: "assistant", content: res.agent_message }]);
+      void listenAfterSpeech(res.agent_message);
+    },
+    [listenAfterSpeech]
+  );
 
   const submitUserMessage = useCallback(
     async (text: string, addToTranscript = true) => {
-      if (!sessionId) return;
+      const activeSession = sessionIdRef.current;
+      if (!activeSession) return;
       const displayText = text || "(no speech detected)";
       if (addToTranscript) {
         setMessages((prev) => [...prev, { role: "user", content: displayText }]);
@@ -76,7 +85,7 @@ export default function VoiceAgent() {
       setBusy(true);
       setError(null);
       try {
-        const res = await sendTurn(sessionId, text);
+        const res = await sendTurn(activeSession, text);
         setFailedMessage(null);
         applyResponse(res);
       } catch (e: any) {
@@ -86,20 +95,46 @@ export default function VoiceAgent() {
         setBusy(false);
       }
     },
-    [sessionId] // eslint-disable-line react-hooks/exhaustive-deps
+    [applyResponse]
   );
+
+  submitRef.current = submitUserMessage;
+
+  const init = useCallback(async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await startConversation();
+      autoListenRef.current = true;
+      applyResponse(res);
+    } catch (e: any) {
+      setError(e.message || "Failed to start conversation.");
+    } finally {
+      setBusy(false);
+    }
+  }, [applyResponse]);
+
+  useEffect(() => {
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+    init();
+  }, [init]);
 
   const handleMicPress = useCallback(async () => {
     if (status === "listening") {
+      autoListenRef.current = false;
+      turnTokenRef.current += 1;
       stopListening();
       return;
     }
+    autoListenRef.current = true;
+    turnTokenRef.current += 1;
     if (isSpeaking) {
-      // Barge-in: user tapping the mic while the agent is talking
-      // interrupts playback immediately instead of waiting it out.
       stopSpeaking();
     }
-    const transcript = await listenOnce();
+    const transcript = await listenOnce({
+      itemHint: missingFieldsRef.current[0] === "load_description",
+    });
     await submitUserMessage(transcript);
   }, [status, isSpeaking, stopListening, stopSpeaking, listenOnce, submitUserMessage]);
 
@@ -107,20 +142,27 @@ export default function VoiceAgent() {
     (e: React.FormEvent) => {
       e.preventDefault();
       if (!manualInput.trim()) return;
+      autoListenRef.current = false;
+      turnTokenRef.current += 1;
+      stopListening();
       submitUserMessage(manualInput.trim());
       setManualInput("");
     },
-    [manualInput, submitUserMessage]
+    [manualInput, submitUserMessage, stopListening]
   );
 
   const handleRestart = useCallback(async () => {
+    autoListenRef.current = false;
+    turnTokenRef.current += 1;
+    stopListening();
+    stopSpeaking();
     if (sessionId) await resetConversation(sessionId);
     setMessages([]);
     setFields({});
     setMissingFields([]);
     setIsComplete(false);
     init();
-  }, [sessionId, init]);
+  }, [sessionId, init, stopListening, stopSpeaking]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -174,7 +216,7 @@ export default function VoiceAgent() {
       <div className="flex items-center gap-3">
         <button
           onClick={handleMicPress}
-          disabled={busy || !supported}
+          disabled={(busy && status !== "listening") || !supported}
           className={`h-14 w-14 rounded-full flex items-center justify-center text-xl shrink-0 transition
             ${status === "listening" ? "bg-red-600 animate-pulse" : "bg-blue-600 hover:bg-blue-500"}
             disabled:opacity-40 disabled:cursor-not-allowed`}
@@ -184,13 +226,15 @@ export default function VoiceAgent() {
         </button>
         <div className="text-xs text-neutral-500">
           {status === "listening"
-            ? "Listening…"
+            ? isComplete
+              ? "Listening — I can still help"
+              : "Listening…"
             : isSpeaking
             ? "Agent speaking — tap mic to interrupt"
             : busy
             ? "Thinking…"
             : isComplete
-            ? "Booking confirmed — tap to contact support"
+            ? "Booking confirmed — mic stays on for help"
             : "Tap to speak"}
         </div>
         <button

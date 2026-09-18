@@ -44,7 +44,7 @@ class TurnResponse(BaseModel):
 
 
 GREETING = (
-    "Hi! I can help you book a pickup and delivery. "
+    "Hi, I'd be happy to help you book a pickup. "
     "What would you like to move, and where from and to?"
 )
 
@@ -80,8 +80,6 @@ def take_turn(req: TurnRequest):
     # Work on a copy so a failed provider call cannot leave a half-processed
     # turn in the in-memory session. Only save the state after full success.
     booking = deepcopy(get_or_create(req.session_id))
-    if booking.stage == Stage.COMPLETE:
-        raise HTTPException(400, "This booking is already complete. Start a new session.")
 
     message = (req.message or "").strip()
     # Empty transcript (e.g. STT produced nothing from silence / dead air)

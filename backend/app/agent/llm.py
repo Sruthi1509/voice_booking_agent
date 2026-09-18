@@ -113,7 +113,8 @@ def generate_reply(action: str, context: dict[str, Any], known_fields_text: str)
         f"Known fields so far: {known_fields_text}\n"
         f"Action to take this turn: {action}\n"
         f"Context for this action: {json.dumps(context, ensure_ascii=False)}\n\n"
-        "Write the assistant's spoken reply now."
+        "Write the assistant's spoken reply now. Keep the meaning of any previous_question, "
+        "but do not repeat that previous question word for word."
     )
     response = _get_client().chat.completions.create(
         model=MODEL,
@@ -121,7 +122,7 @@ def generate_reply(action: str, context: dict[str, Any], known_fields_text: str)
             {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.4,
+        temperature=0.7,
         max_tokens=300,
     )
     return (response.choices[0].message.content or "").strip()

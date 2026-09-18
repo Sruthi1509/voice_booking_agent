@@ -156,6 +156,90 @@ def test_silence_does_not_corrupt_state_and_escalates():
     print("OK: repeated silence escalates action instead of looping forever.")
 
 
+def test_repeated_load_is_stored_once():
+    b = BookingState(session_id="t_load_repeat")
+    b = turn(b, "I want to move a chair", {
+        "intent": "information",
+        "fields": {
+            "load_description": {"raw_text": "chair chair", "confidence": "high", "is_correction": False},
+        },
+    })
+    assert b.fields["load_description"].value == "chair"
+    b = turn(b, "chair", {
+        "intent": "information",
+        "fields": {
+            "load_description": {"raw_text": "chair", "confidence": "high", "is_correction": False},
+        },
+    })
+    assert b.fields["load_description"].value == "chair"
+    print("OK: repeating the item name does not concatenate the load description.")
+
+
+def test_share_is_interpreted_as_chair():
+    assert validation.correct_item_homophones("share") == "chair"
+    b = BookingState(session_id="t_share")
+    b = turn(b, "share", {
+        "intent": "information",
+        "fields": {
+            "load_description": {"raw_text": "share", "confidence": "high", "is_correction": False},
+        },
+    })
+    assert b.fields["load_description"].value == "chair"
+    print("OK: STT 'share' is stored as chair.")
+
+
+def test_unclear_turn_reuses_previous_question_context():
+    b = BookingState(session_id="t_rephrase")
+    b.history.append({"role": "assistant", "content": "Where should we pick this up from?"})
+    b = turn(b, "", {"intent": "unclear_or_silence", "fields": {}})
+    graph_state = {
+        "booking": b, "intent": "unclear_or_silence", "off_topic_note": "",
+        "raw_fields": {}, "action": "", "action_context": {}, "reply": "",
+    }
+    graph.node_decide(graph_state)
+    assert graph_state["action"] == "handle_unclear"
+    assert graph_state["action_context"]["previous_question"]
+    print("OK: silence keeps the same question for rephrasing.")
+
+
+def test_confirmed_booking_rejects_location_change():
+    b = BookingState(session_id="t_locked")
+    for name, value in {
+        "pickup_location": "Whitefield",
+        "drop_location": "Koramangala",
+        "date": "2026-09-20",
+        "time": "6pm",
+        "load_description": "chair",
+        "country_code": "+91",
+        "contact_number": "9876543210",
+    }.items():
+        b.fields[name] = graph.FieldValue(value, value, confirmed=True)
+    b.stage = Stage.CONFIRMING_SUMMARY
+    b = turn(b, "yes", {"intent": "confirmation_yes", "fields": {}})
+    assert b.ended is True
+    assert b.stage == Stage.COMPLETE
+
+    b = turn(b, "please change the pickup to HSR Layout", {
+        "intent": "correction",
+        "fields": {
+            "pickup_location": {"raw_text": "HSR Layout", "confidence": "high", "is_correction": True},
+        },
+    })
+    assert b.fields["pickup_location"].value == "Whitefield"
+    graph_state = {
+        "booking": b, "intent": "correction", "off_topic_note": "",
+        "raw_fields": {
+            "pickup_location": {"raw_text": "HSR Layout", "confidence": "high", "is_correction": True},
+        },
+        "action": "", "action_context": {}, "reply": "",
+    }
+    # decide sees already-complete booking from the previous turn
+    graph.node_decide(graph_state)
+    assert graph_state["action"] == "handle_locked_booking"
+    assert "1800" in graph_state["action_context"]["support_number"]
+    print("OK: location cannot be changed after confirmation; support number is offered.")
+
+
 def test_off_topic_does_not_block_progress():
     b = BookingState(session_id="t7")
     b = turn(b, "by the way do you guys handle fragile items carefully?", {
@@ -176,6 +260,10 @@ if __name__ == "__main__":
     test_same_location_no_reopens_drop_location()
     test_unserviceable_location_rejected()
     test_oversized_load_flagged()
+    test_repeated_load_is_stored_once()
+    test_share_is_interpreted_as_chair()
+    test_unclear_turn_reuses_previous_question_context()
+    test_confirmed_booking_rejects_location_change()
     test_silence_does_not_corrupt_state_and_escalates()
     test_off_topic_does_not_block_progress()
     print("\nAll offline control-flow tests passed.")
