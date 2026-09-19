@@ -109,7 +109,11 @@ def extract_turn(history: list[dict[str, str]], known_fields_text: str) -> dict[
 
 def generate_reply(action: str, context: dict[str, Any], known_fields_text: str) -> str:
     """Run the natural-language response generation step."""
+    from datetime import datetime
+    today_str = datetime.now().strftime("%A, %B %d, %Y")
+
     user_prompt = (
+        f"Today's date is: {today_str}\n"
         f"Known fields so far: {known_fields_text}\n"
         f"Action to take this turn: {action}\n"
         f"Context for this action: {json.dumps(context, ensure_ascii=False)}\n\n"
