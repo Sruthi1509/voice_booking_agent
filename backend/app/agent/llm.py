@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+import time
+from typing import Any, Callable
 
-from groq import Groq
+from dotenv import load_dotenv
+from groq import Groq, RateLimitError
 
 from .prompts import EXTRACTION_SYSTEM_PROMPT, RESPONSE_SYSTEM_PROMPT
 
-MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+load_dotenv()
+
+
+def _get_model() -> str:
+    return os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+
 
 _client: Groq | None = None
+
 
 
 def _get_client() -> Groq:
@@ -73,6 +81,19 @@ _TURN_ANALYSIS_TOOL = {
 }
 
 
+def _call_with_retry(fn: Callable[[], Any], retries: int = 3, initial_delay: float = 2.0) -> Any:
+    """Execute a Groq API call with exponential backoff on 429 RateLimitError."""
+    delay = initial_delay
+    for attempt in range(retries):
+        try:
+            return fn()
+        except RateLimitError as e:
+            if attempt == retries - 1:
+                raise e
+            time.sleep(delay)
+            delay *= 2
+
+
 def extract_turn(history: list[dict[str, str]], known_fields_text: str) -> dict[str, Any]:
     """Run the perception step and return the tool-call arguments as a dict.
 
@@ -92,16 +113,18 @@ def extract_turn(history: list[dict[str, str]], known_fields_text: str) -> dict[
         "record_turn_analysis with the structured result."
     )
 
-    response = _get_client().chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        tools=[_TURN_ANALYSIS_TOOL],
-        tool_choice={"type": "function", "function": {"name": "record_turn_analysis"}},
-        temperature=0,
-        max_tokens=200,  # tool-call JSON is small; cap output to save TPM
+    response = _call_with_retry(
+        lambda: _get_client().chat.completions.create(
+            model=_get_model(),
+            messages=[
+                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            tools=[_TURN_ANALYSIS_TOOL],
+            tool_choice={"type": "function", "function": {"name": "record_turn_analysis"}},
+            temperature=0,
+            max_tokens=600,  # ensure full JSON tool-call schema fits without truncation
+        )
     )
 
     try:
@@ -130,13 +153,16 @@ def generate_reply(action: str, context: dict[str, Any], known_fields_text: str)
         "Write the assistant's spoken reply now. Keep the meaning of any previous_question, "
         "but do not repeat that previous question word for word."
     )
-    response = _get_client().chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.7,
-        max_tokens=300,
+    response = _call_with_retry(
+        lambda: _get_client().chat.completions.create(
+            model=_get_model(),
+            messages=[
+                {"role": "system", "content": RESPONSE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.7,
+            max_tokens=300,
+        )
     )
     return (response.choices[0].message.content or "").strip()
+

@@ -7,13 +7,13 @@ venv/
 # Environment files (examples are safe to commit)
 .env
 .env.*
-!.env.example
-!.env.local.example
+!.env*.example
 
 # Node / Next.js
 node_modules/
 .next/
 out/
+*.tsbuildinfo
 
 # Misc
 .DS_Store
@@ -21,3 +21,4 @@ out/
 .pytest_cache/
 .coverage
 coverage/
+
