@@ -6,11 +6,11 @@ An intelligent, state-driven AI voice booking assistant for a Porter-style logis
 
 ## 1. Key Capabilities & Enhancements
 
-- **User-Controlled Continuous Microphone Power**: The user has full power to turn the microphone ON and OFF. Unlike basic web demos that auto-shutoff after a single utterance or silence timeout, the agent maintains active listening continuously across conversational turns until explicitly toggled off by the user.
+- **Tap-to-Talk Microphone Control**: The microphone stays **BLUE** when idle. Tapping the mic turns it **RED** to record continuous audio; tapping again turns it back to **BLUE** and triggers backend processing *only after* recording completes.
 - **Phonetic Location Hearing & Intelligent Suggestions**: Resolves speech-to-text variations and regional location homophones (e.g., *"Vizianagaram"* / *"Vijayanagaram"* $\rightarrow$ *"Vijayanagar"*). If a location is outside the direct service zone but close to a served area, the agent proactively suggests: *"Did you mean Vijayanagar? Or is there a nearby landmark within our service zone?"*
-- **Country Name to Calling Code Conversion & Validation**: Asks users for their country name (e.g., *"India"*, *"United States"*, *"UK"*, *"Canada"*, *"UAE"*, *"Australia"*) instead of raw numeric codes, converts country names to standard E.164 calling codes (`+91`, `+1`, `+44`, `+971`, etc.), and validates national contact numbers accordingly.
-- **Phonetic Item Homophone Correction**: Automatically rewrites common speech-to-text mishearings (e.g., *"share"* $\rightarrow$ *"chair"*, *"bridge"* $\rightarrow$ *"fridge"*, *"sofer"* $\rightarrow$ *"sofa"*).
-- **Deterministic Business-Rule Engine**: Date validation (past-date rejection), vehicle fleet load feasibility checks (two-wheeler, mini-van, mini-truck), and duplicate phrase collapsing are handled deterministically in pure Python to prevent LLM hallucination or prompt drift.
+- **Country Name Conversion & Non-Repeating Prompts**: Asks users for their country name (e.g., *"India"*, *"United States"*, *"UK"*), converts it to standard E.164 calling codes (`+91`, `+1`, `+44`), and **never re-asks for the country** once it is captured in the conversation state.
+- **Strict Country Phone Number Validation**: Validates national digit length according to country rules (e.g., strictly enforcing **10 digits** for India `+91`). If the user provides an incomplete number (e.g., 8 digits: `623 875 12`), the system rejects it with an explicit explanation instead of silently accepting invalid numbers.
+- **Informative Vehicle Tier Suggestions**: Automatically suggests appropriate vehicle fleet tiers (Two-wheeler, Mini-van, Mini-truck) based on item descriptions as an informative note without requiring separate confirmation turns.
 
 ---
 

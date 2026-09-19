@@ -276,6 +276,37 @@ def test_country_name_conversion():
     print("OK: Country names (India, United States, UK) correctly mapped to calling codes.")
 
 
+def test_multi_country_phone_digit_length_validation():
+    # India (+91): 8 digits rejected, 10 digits accepted
+    res_in_bad, err_in_bad = validation.normalize_phone("623 875 12", "+91")
+    assert res_in_bad is None
+    assert err_in_bad and "10 digits are required for India" in err_in_bad
+
+    res_in_good, err_in_good = validation.normalize_phone("9876543210", "+91")
+    assert res_in_good == "+919876543210"
+    assert err_in_good is None
+
+    # US/Canada (+1): 7 digits rejected, 10 digits accepted
+    res_us_bad, err_us_bad = validation.normalize_phone("5551234", "+1")
+    assert res_us_bad is None
+    assert err_us_bad and "10 digits are required for United States" in err_us_bad
+
+    res_us_good, err_us_good = validation.normalize_phone("4155552671", "+1")
+    assert res_us_good == "+14155552671"
+    assert err_us_good is None
+
+    # UAE (+971): 7 digits rejected, 9 digits accepted
+    res_uae_bad, err_uae_bad = validation.normalize_phone("5012345", "+971")
+    assert res_uae_bad is None
+    assert err_uae_bad and "9 digits are required for UAE" in err_uae_bad
+
+    res_uae_good, err_uae_good = validation.normalize_phone("501234567", "+971")
+    assert res_uae_good == "+971501234567"
+    assert err_uae_good is None
+
+    print("OK: Multi-country phone digit validation strictly enforces specs for India, US, UAE, and others.")
+
+
 if __name__ == "__main__":
     test_ambiguous_load_not_accepted_blindly()
     test_correction_overwrites_and_flags_confirm_back()
@@ -293,4 +324,5 @@ if __name__ == "__main__":
     test_off_topic_does_not_block_progress()
     test_location_alias_and_close_suggestion()
     test_country_name_conversion()
+    test_multi_country_phone_digit_length_validation()
     print("\nAll offline control-flow tests passed.")

@@ -298,6 +298,42 @@ def normalize_country_code(raw_text: str) -> tuple[Optional[str], Optional[str]]
     )
 
 
+COUNTRY_PHONE_SPECS: dict[str, tuple[str, tuple[int, ...]]] = {
+    # calling_code: (Country Name, (allowed_national_digit_lengths,))
+    "91": ("India", (10,)),
+    "1": ("United States/Canada", (10,)),
+    "44": ("United Kingdom", (10, 11)),
+    "61": ("Australia", (9, 10)),
+    "971": ("UAE", (9,)),
+    "65": ("Singapore", (8,)),
+    "49": ("Germany", (10, 11)),
+    "33": ("France", (9,)),
+    "81": ("Japan", (10,)),
+    "86": ("China", (11,)),
+    "92": ("Pakistan", (10,)),
+    "880": ("Bangladesh", (10,)),
+    "94": ("Sri Lanka", (9,)),
+    "977": ("Nepal", (10,)),
+    "60": ("Malaysia", (9, 10)),
+    "62": ("Indonesia", (9, 10, 11)),
+    "63": ("Philippines", (10,)),
+    "66": ("Thailand", (9,)),
+    "82": ("South Korea", (9, 10)),
+    "39": ("Italy", (9, 10)),
+    "34": ("Spain", (9,)),
+    "55": ("Brazil", (10, 11)),
+    "52": ("Mexico", (10,)),
+    "27": ("South Africa", (9,)),
+    "20": ("Egypt", (10,)),
+    "234": ("Nigeria", (10,)),
+    "7": ("Russia", (10,)),
+    "64": ("New Zealand", (8, 9)),
+    "31": ("Netherlands", (9,)),
+    "41": ("Switzerland", (9,)),
+    "46": ("Sweden", (9,)),
+}
+
+
 def normalize_phone(raw_text: str, country_code: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     """Extract a plausible phone number from noisy STT text.
     STT frequently renders numbers as words ('nine eight seven...') or with
@@ -324,18 +360,42 @@ def normalize_phone(raw_text: str, country_code: Optional[str] = None) -> tuple[
                 )
             national_digits = digits[len(normalized_code):]
         else:
-            national_digits = digits
-        if 6 <= len(national_digits) <= 14:
+            if digits.startswith(normalized_code) and len(digits) >= len(normalized_code) + 7:
+                national_digits = digits[len(normalized_code):]
+            else:
+                national_digits = digits
+
+        # Strip optional leading zero in national portion (e.g. 09876543210 -> 9876543210)
+        if len(national_digits) > 1 and national_digits.startswith("0"):
+            national_digits = national_digits[1:]
+
+        # Lookup country specification for exact digit length validation
+        spec = COUNTRY_PHONE_SPECS.get(normalized_code)
+        if spec:
+            country_name, allowed_lengths = spec
+            if len(national_digits) not in allowed_lengths:
+                fmt_lengths = " or ".join(str(l) for l in allowed_lengths)
+                return None, (
+                    f"The phone number provided has {len(national_digits)} digits, but {fmt_lengths} digits "
+                    f"are required for {country_name} (+{normalized_code}). "
+                    "Could you please provide your full phone number?"
+                )
             return f"+{normalized_code}{national_digits}", None
+
+        # General fallback validation for any other country code
+        if 7 <= len(national_digits) <= 12:
+            return f"+{normalized_code}{national_digits}", None
+
         return None, (
-            f"That phone number is incomplete for country code +{normalized_code}. "
-            "Please provide the remaining national number."
+            f"The phone number '{raw_text}' (has {len(national_digits)} digits) is invalid for country code +{normalized_code}. "
+            "Please provide a complete, valid phone number."
         )
+
     if len(digits) == 10:
         return digits, None
     if len(digits) == 12 and digits.startswith("91"):
         return digits[2:], None
     return None, (
-        f"The number '{raw_text}' is incomplete. Please provide your country code first, "
-        "then the full phone number."
+        f"The number '{raw_text}' is incomplete. Please provide your country name or code first, "
+        "then your full phone number."
     )
