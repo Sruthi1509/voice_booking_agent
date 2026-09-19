@@ -95,19 +95,13 @@ def _call_with_retry(fn: Callable[[], Any], retries: int = 3, initial_delay: flo
 
 
 def extract_turn(history: list[dict[str, str]], known_fields_text: str) -> dict[str, Any]:
-    """Run the perception step and return the tool-call arguments as a dict.
+    """Run the perception step and return the tool-call arguments as a dict."""
+    from .validation import get_current_time
+    today_str = get_current_time().strftime("%A, %B %d, %Y")
 
-    Token-budget notes:
-    - history is capped at the last 6 messages (3 turns) -- enough context for
-      intent + field classification without bloating the prompt on long sessions.
-    - known_fields_text is intentionally excluded from the extraction prompt:
-      the recent conversation history already encodes what was collected, and the
-      extraction model only needs to classify the LATEST user turn. known_fields_text
-      is still passed to generate_reply() where it prevents re-asking confirmed fields.
-    - max_tokens=200 is sufficient for the fixed-schema tool-call JSON output.
-    """
     convo_text = "\n".join(f"{h['role']}: {h['content']}" for h in history[-6:])
     user_prompt = (
+        f"Today's date is: {today_str}\n"
         f"Conversation so far:\n{convo_text}\n\n"
         "Analyze the LATEST user turn (the final 'user:' line above) and call "
         "record_turn_analysis with the structured result."
@@ -142,8 +136,8 @@ def extract_turn(history: list[dict[str, str]], known_fields_text: str) -> dict[
 
 def generate_reply(action: str, context: dict[str, Any], known_fields_text: str) -> str:
     """Run the natural-language response generation step."""
-    from datetime import datetime
-    today_str = datetime.now().strftime("%A, %B %d, %Y")
+    from .validation import get_current_time
+    today_str = get_current_time().strftime("%A, %B %d, %Y")
 
     user_prompt = (
         f"Today's date is: {today_str}\n"

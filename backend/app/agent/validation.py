@@ -7,12 +7,23 @@ correctness of "is this date in the past" to depend on an LLM's mood.
 from __future__ import annotations
 
 import difflib
+import os
 import re
 from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import dateparser
 import dateparser.search
+
+
+def get_current_time() -> datetime:
+    """Return real-time datetime in local service timezone (default Asia/Kolkata for IST)."""
+    tz_name = os.getenv("TIMEZONE", "Asia/Kolkata")
+    try:
+        return datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        return datetime.now()
 
 # --- Service area (demo scope) --------------------------------------------
 # In a real system this would be a geocoding + service-polygon lookup.
@@ -189,9 +200,9 @@ def validate_location(field_name: str, raw_value: str) -> tuple[Optional[str], O
 
 def resolve_date(raw_text: str, reference_dt: Optional[datetime] = None) -> tuple[Optional[str], Optional[str]]:
     """Resolve relative/natural date text ('tomorrow', 'next Monday', '5th Dec')
-    into an ISO date, relative to `reference_dt` (defaults to now).
+    into an ISO date, relative to `reference_dt` (defaults to current time in local timezone).
     Returns (iso_date_or_None, error_message_or_None)."""
-    reference_dt = reference_dt or datetime.now()
+    reference_dt = reference_dt or get_current_time()
     # Resolve a date without a year into the current year. This lets us
     # reject a date that has already passed rather than silently scheduling
     # it for the same day next year (e.g. "15 September" on 18 September).
@@ -326,9 +337,9 @@ NON_TRANSPORTABLE_PATTERNS = [
     # People & passengers
     (r"\b(passengers?|people|persons?|kids?|children|humans?|relatives?|family)\b",
      "passengers or people"),
-    # Hazardous / Illegal materials
-    (r"\b(explosives?|fireworks?|gasoline|petrol|diesel|flammables?|poisons?|toxic|weapons?|guns?|drugs?|contraband)\b",
-     "hazardous, flammable, or illegal materials"),
+    # Hazardous / Illegal materials & weapons
+    (r"\b(explosives?|fireworks?|gasoline|petrol|diesel|flammables?|poisons?|toxic|weapons?|guns?|pistols?|rifles?|firearms?|ammo|ammunition|bombs?|drugs?|contraband)\b",
+     "hazardous, flammable, or illegal materials/weapons"),
     # Abstract or non-physical items / natural elements
     (r"\b(clouds?|weather|sky|ocean|sea|sunlight|time|air|thoughts?|ghosts?|volcanoes?|volcano)\b",
      "non-physical items or natural elements"),
