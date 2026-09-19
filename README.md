@@ -7,13 +7,13 @@ An intelligent, state-driven AI voice booking assistant for a Porter-style logis
 ## 1. Key Capabilities
 
 - **Tap-to-Talk Microphone Control** -- Mic stays **BLUE** when idle; turns **RED** while recording. Processing is triggered only after the user manually stops, avoiding premature or partial captures.
-- **Speaker Volume Muting** -- A dedicated speaker button mutes/unmutes TTS output in real time (`utterance.volume = 0/1`). Unmuting lets the user hear the remainder of a response already in progress without resetting state or hanging the UI.
-- **Phonetic STT Homophone Correction (Locations & Items)** -- Automatically maps misheard locations and item names to their canonical form before any business-rule validation.
-- **Generalized Non-Transportable & Illogical Item Filtering** -- Detects pets, passengers, hazardous goods, abstract/natural elements, and completely unrecognized objects. Rejects them explicitly or asks the user once to confirm what they meant.
+- **Past-Date Rejection & Real-Time Date Validation** -- If a date in the past is entered, the assistant informs the user that delivery cannot be scheduled for that date since it has already passed, and asks for today's date or a future date.
+- **Country-Format Phone Validation** -- Converts spoken country names to calling codes and enforces country-specific digit counts for 30+ countries. If an incomplete number is given for that country format, it explicitly asks for the full phone number.
+- **Mid-Session Corrections & Locked Confirmation** -- Information can be updated or changed anytime up until final confirmation. Once confirmed, booking details are locked and the agent directs further changes to customer support.
+- **Object Delivery Feasibility Verification** -- Checks whether items are logically transportable by the delivery fleet, automatically filtering out non-transportable items such as live animals, weapons/hazardous materials, passengers, abstract elements, or oversized loads.
+- **Phonetic STT Homophone Correction** -- Automatically maps misheard locations, item names, and spoken digit homophones (e.g. `"to"` -> `2`) to canonical forms before business-rule validation.
 - **Item Quantity Validation** -- When plural items are named without a count, the assistant asks how many, because quantity drives vehicle tier selection.
-- **Country-Aware Phone Validation** -- Converts spoken country names to E.164 codes, then enforces the exact national digit count for 30+ countries.
-- **Non-Repeating Country Prompts** -- Once the country code is captured, the assistant never re-asks for it.
-- **Informative Vehicle Tier Suggestions** -- Suggests Two-wheeler / Mini-van / Mini-truck as a brief informational note, without requiring a separate confirmation turn.
+- **Informative Vehicle Tier Suggestions** -- Suggests Two-wheeler / Mini-van / Mini-truck as a brief informational note without requiring a separate confirmation turn.
 - **Natural Date & Time Prompts** -- Asks for date/time conversationally without hardcoded year examples (current year is injected dynamically).
 
 ---
@@ -25,13 +25,13 @@ An intelligent, state-driven AI voice booking assistant for a Porter-style logis
 |     Next.js Frontend           | ------------------------> |       FastAPI Backend             |
 |                                | <------------------------ |                                   |
 | - Tap-to-Talk Mic Toggle       |                           |  LangGraph State Machine          |
-| - Speaker Volume Mute Button   |                           |  (Deterministic + Perception LLM) |
-| - Web Speech (STT + TTS)       |                           |                                   |
-| - Chat & Live Summary Card     |                           |  --> Groq API (gpt-oss-120b)      |
+| - Web Speech (STT + TTS)       |                           |  (Deterministic + Perception LLM) |
+| - Chat & Live Summary Card     |                           |                                   |
+|                                |                           |  --> Groq API                     |
 +--------------------------------+                           +-----------------------------------+
 ```
 
-- **Frontend (Next.js / React / TypeScript)**: Captures user speech via the browser-native Web Speech API. Provides Tap-to-Talk recording, real-time speaker mute/unmute, STT homophone correction in-browser, and a live structured booking summary card.
+- **Frontend (Next.js / React / TypeScript)**: Captures user speech via the browser-native Web Speech API. Provides Tap-to-Talk recording, STT homophone correction in-browser, and a live structured booking summary card.
 - **Backend (FastAPI + LangGraph + Groq)**: Houses the conversation state machine (`BookingState`), structured perception layer (`perceive`), deterministic business-rule validator (`merge_and_validate`), action decider (`decide`), and spoken response generator (`respond`).
 
 ---
@@ -189,7 +189,7 @@ voice-booking-agent/
 +-- frontend/
     +-- app/                        # Next.js App Router
     +-- components/
-    |   +-- VoiceAgent.tsx           # Tap-to-Talk mic, speaker mute button & chat UI
+    |   +-- VoiceAgent.tsx           # Tap-to-Talk mic & chat UI
     |   +-- SummaryCard.tsx          # Live structured booking summary card
     +-- hooks/useSpeech.ts           # Web Speech API wrapper (STT + TTS + homophones)
     +-- lib/api.ts                   # Backend API client
