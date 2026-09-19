@@ -63,14 +63,87 @@ VEHICLE_TIERS = [
 ]
 
 
+# Common speech-to-text confusions for location names in India / service areas.
+LOCATION_ALIASES = {
+    "vizianagaram": "vijayanagar",
+    "vijayanagaram": "vijayanagar",
+    "vijaianagar": "vijayanagar",
+    "vijayanagra": "vijayanagar",
+    "white field": "whitefield",
+    "indira nagar": "indiranagar",
+    "kormangla": "koramangala",
+    "koramangla": "koramangala",
+    "hsr": "hsr layout",
+    "btm": "btm layout",
+    "electronic city": "electronic city",
+    "mg road": "mg road",
+    "jaya nagar": "jayanagar",
+    "jp nagar": "jp nagar",
+    "malleswaram": "malleswaram",
+    "malleshwaram": "malleswaram",
+    "rajaji nagar": "rajajinagar",
+    "banashankari": "banashankari",
+    "marathalli": "marathahalli",
+    "marathahalli": "marathahalli",
+    "bellandur": "bellandur",
+    "sarjapur": "sarjapur road",
+    "kr puram": "kr puram",
+}
+
+# Country name/alias to calling code mapping
+COUNTRY_NAME_TO_CODE = {
+    "india": "+91",
+    "indian": "+91",
+    "in": "+91",
+    "ind": "+91",
+    "united states": "+1",
+    "us": "+1",
+    "usa": "+1",
+    "america": "+1",
+    "american": "+1",
+    "united kingdom": "+44",
+    "uk": "+44",
+    "britain": "+44",
+    "great britain": "+44",
+    "england": "+44",
+    "canada": "+1",
+    "australia": "+61",
+    "uae": "+971",
+    "united arab emirates": "+971",
+    "dubai": "+971",
+    "singapore": "+65",
+    "germany": "+49",
+    "france": "+33",
+    "japan": "+81",
+    "china": "+86",
+}
+
+
 def find_serviceable_match(raw_location: str) -> Optional[str]:
     """Fuzzy-match a (possibly mis-transcribed) locality name against the
     serviceable list. Returns the canonical name or None if unserviceable."""
     loc = raw_location.lower().strip()
+    
+    # Check explicit alias mapping first
+    if loc in LOCATION_ALIASES:
+        target = LOCATION_ALIASES[loc]
+        for area in SERVICEABLE_AREAS:
+            if area == target or target in area:
+                return area.title()
+                
     for area in SERVICEABLE_AREAS:
         if area in loc or loc in area:
             return area.title()
-    close = difflib.get_close_matches(loc, SERVICEABLE_AREAS, n=1, cutoff=0.72)
+    close = difflib.get_close_matches(loc, SERVICEABLE_AREAS, n=1, cutoff=0.55)
+    return close[0].title() if close else None
+
+
+def find_close_location_suggestion(raw_location: str) -> Optional[str]:
+    """Find a nearby or phonetically close serviceable location to offer as a suggestion."""
+    loc = raw_location.lower().strip()
+    if loc in LOCATION_ALIASES:
+        return LOCATION_ALIASES[loc].title()
+    close = difflib.get_close_matches(loc, SERVICEABLE_AREAS, n=1, cutoff=0.45)
     return close[0].title() if close else None
 
 
@@ -79,6 +152,14 @@ def validate_location(field_name: str, raw_value: str) -> tuple[Optional[str], O
     match = find_serviceable_match(raw_value)
     if match:
         return match, None
+        
+    suggestion = find_close_location_suggestion(raw_value)
+    if suggestion:
+        return None, (
+            f"'{raw_value}' is currently outside our service region. "
+            f"Did you mean '{suggestion}'? Or could you provide a nearby area within our service zone?"
+        )
+        
     return None, (
         f"'{raw_value}' doesn't match any area we currently service. "
         f"Could you confirm the locality, or provide a nearby well-known area?"
@@ -198,13 +279,22 @@ def check_load_feasibility(raw_description: str) -> tuple[Optional[str], Optiona
 
 
 def normalize_country_code(raw_text: str) -> tuple[Optional[str], Optional[str]]:
-    """Normalize an international calling code into E.164 prefix form."""
+    """Normalize a country name or calling code into standard country calling code format."""
+    text = raw_text.strip().lower()
+    
+    # Check if raw_text matches a country name or alias
+    for name, code in COUNTRY_NAME_TO_CODE.items():
+        if text == name or f"in {name}" in text or f"from {name}" in text or name in text.split():
+            return code, None
+
+    # Check if it's already a numeric country code (e.g. "+91", "91", "1")
     digits = re.sub(r"\D", "", raw_text)
     if 1 <= len(digits) <= 3 and digits != "0":
         return f"+{digits}", None
+
     return None, (
-        f"'{raw_text}' is not a valid country calling code. "
-        "Please provide the code with one to three digits, for example +91."
+        f"'{raw_text}' is not a recognized country name or calling code. "
+        "Please specify your country (for example, India, United States, UK) or country code."
     )
 
 

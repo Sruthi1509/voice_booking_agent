@@ -251,6 +251,31 @@ def test_off_topic_does_not_block_progress():
     print("OK: off-topic question handled without derailing required-field collection.")
 
 
+def test_location_alias_and_close_suggestion():
+    # 1. Alias / STT homophone mapping resolves Vizianagaram to Vijayanagar
+    res, err = validation.validate_location("drop_location", "Vizianagaram")
+    assert res == "Vijayanagar"
+    assert err is None
+
+    # 2. Unserviceable location with a close match gives a close suggestion
+    res_suggest = validation.find_close_location_suggestion("Vijayanagaram")
+    assert res_suggest == "Vijayanagar"
+    print("OK: Location alias resolves Vizianagaram to Vijayanagar, and close match suggestion works.")
+
+
+def test_country_name_conversion():
+    code, err = validation.normalize_country_code("India")
+    assert code == "+91"
+    assert err is None
+    code, err = validation.normalize_country_code("United States")
+    assert code == "+1"
+    assert err is None
+    code, err = validation.normalize_country_code("UK")
+    assert code == "+44"
+    assert err is None
+    print("OK: Country names (India, United States, UK) correctly mapped to calling codes.")
+
+
 if __name__ == "__main__":
     test_ambiguous_load_not_accepted_blindly()
     test_correction_overwrites_and_flags_confirm_back()
@@ -266,4 +291,6 @@ if __name__ == "__main__":
     test_confirmed_booking_rejects_location_change()
     test_silence_does_not_corrupt_state_and_escalates()
     test_off_topic_does_not_block_progress()
+    test_location_alias_and_close_suggestion()
+    test_country_name_conversion()
     print("\nAll offline control-flow tests passed.")
