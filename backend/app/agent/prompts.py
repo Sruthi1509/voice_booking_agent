@@ -32,8 +32,9 @@ Rules:
   "confirmation_yes" or "confirmation_no" accordingly, and don't re-extract fields already \
   covered by that confirmation.
 - Never fabricate a phone number, date, or location that was not actually said.
+- For `contact_number`, extract digits accurately. Speech-to-text engines often transcribe digit '2' as 'to' or 'too', '4' as 'for', '8' as 'ate', '0' as 'oh' (e.g. "6 to 387 51200" is spoken "6 2 3 8 7 5 1 2 0 0"). Extract clean digits or homophone-resolved numbers.
 - date and time should be captured as the RAW natural-language text the user said (e.g. \
-  "tomorrow evening", "next Monday", "around 6pm") -- normalization happens downstream, not here.
+  "tomorrow evening", "next Monday", "in the morning", "around 6pm") -- normalization happens downstream, not here.
 """
 
 RESPONSE_SYSTEM_PROMPT = """You are the voice of a warm, polite booking assistant for a \

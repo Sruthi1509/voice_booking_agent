@@ -82,7 +82,10 @@ def _resolve_field(name: str, raw_text: str) -> tuple[str | None, str | None, st
         )
         vehicle, err = validation.check_load_feasibility(cleaned)
         return cleaned, err, vehicle
-    # time, special_instructions: free text, no hard validation
+    if name == "time":
+        value, err = validation.normalize_time(raw_text)
+        return value, err, None
+    # special_instructions: free text, no hard validation
     return raw_text, None, None
 
 

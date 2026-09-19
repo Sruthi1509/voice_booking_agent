@@ -470,21 +470,84 @@ COUNTRY_PHONE_SPECS: dict[str, tuple[str, tuple[int, ...]]] = {
 }
 
 
+WORD_TO_DIGIT_MAP = {
+    "zero": "0", "oh": "0", "o": "0", "nil": "0", "nought": "0",
+    "one": "1", "won": "1",
+    "two": "2", "to": "2", "too": "2", "tu": "2",
+    "three": "3", "tree": "3", "free": "3",
+    "four": "4", "for": "4", "fore": "4",
+    "five": "5",
+    "six": "6", "sex": "6",
+    "seven": "7",
+    "eight": "8", "ate": "8",
+    "nine": "9", "nigh": "9",
+}
+
+
+def parse_phone_digits_from_stt(raw_text: str) -> str:
+    """Extract digits from STT phone number text, handling digit words,
+    homophones ('to' -> 2, 'for' -> 4, 'ate' -> 8), and double/triple multipliers."""
+    tokens = re.findall(r"\b[a-zA-Z0-9]+\b", raw_text.lower())
+    digits_out: list[str] = []
+
+    multiplier = 1
+    for token in tokens:
+        if token == "double":
+            multiplier = 2
+            continue
+        elif token == "triple":
+            multiplier = 3
+            continue
+
+        d_str = ""
+        if token.isdigit():
+            d_str = token
+        elif token in WORD_TO_DIGIT_MAP:
+            d_str = WORD_TO_DIGIT_MAP[token]
+
+        if d_str:
+            if multiplier > 1:
+                first_d = d_str[0]
+                digits_out.append(first_d * multiplier)
+                if len(d_str) > 1:
+                    digits_out.append(d_str[1:])
+                multiplier = 1
+            else:
+                digits_out.append(d_str)
+
+    return "".join(digits_out)
+
+
+def normalize_time(raw_text: str) -> tuple[Optional[str], Optional[str]]:
+    """Normalize natural time expressions into clean, standard labels (e.g. 'Morning', '6:30 PM')."""
+    text = raw_text.strip().lower()
+    time_match = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text)
+    if time_match:
+        hour = int(time_match.group(1))
+        minute = time_match.group(2) or "00"
+        ampm = time_match.group(3).upper()
+        if 1 <= hour <= 12:
+            return f"{hour}:{minute} {ampm}", None
+
+    if re.search(r"\b(early morning|in the morning|morning|mornings)\b", text):
+        return "Morning", None
+    if re.search(r"\b(in the afternoon|afternoon|afternoons|noon|midday)\b", text):
+        return "Afternoon", None
+    if re.search(r"\b(in the evening|evening|evenings)\b", text):
+        return "Evening", None
+    if re.search(r"\b(at night|night|nights|tonight)\b", text):
+        return "Night", None
+
+    return raw_text.strip().title(), None
+
+
 def normalize_phone(raw_text: str, country_code: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     """Extract a plausible phone number from noisy STT text.
     STT frequently renders numbers as words ('nine eight seven...') or with
-    stray words/pauses mixed in, so we strip non-digits and validate length."""
-    digits = re.sub(r"\D", "", raw_text)
-    # Handle spelled-out digits STT sometimes fails to convert.
-    word_to_digit = {
-        "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4",
-        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
-    }
-    if len(digits) < 10:
-        words = re.findall(r"[a-zA-Z]+", raw_text.lower())
-        spelled = "".join(word_to_digit[w] for w in words if w in word_to_digit)
-        if len(spelled) >= 10:
-            digits = spelled
+    homophones like 'to' for '2' or 'for' for '4'."""
+    parsed_digits = parse_phone_digits_from_stt(raw_text)
+    raw_digits = re.sub(r"\D", "", raw_text)
+    digits = parsed_digits if len(parsed_digits) >= len(raw_digits) else raw_digits
 
     normalized_code = (country_code or "").lstrip("+")
     if normalized_code:
@@ -523,7 +586,7 @@ def normalize_phone(raw_text: str, country_code: Optional[str] = None) -> tuple[
             return f"+{normalized_code}{national_digits}", None
 
         return None, (
-            f"The phone number '{raw_text}' (has {len(national_digits)} digits) is invalid for country code +{normalized_code}. "
+            f"The phone number '{digits}' (has {len(national_digits)} digits) is invalid for country code +{normalized_code}. "
             "Please provide a complete, valid phone number."
         )
 
@@ -532,6 +595,6 @@ def normalize_phone(raw_text: str, country_code: Optional[str] = None) -> tuple[
     if len(digits) == 12 and digits.startswith("91"):
         return digits[2:], None
     return None, (
-        f"The number '{raw_text}' is incomplete. Please provide your country name or code first, "
+        f"The number '{digits}' is incomplete. Please provide your country name or code first, "
         "then your full phone number."
     )

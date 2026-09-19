@@ -360,6 +360,24 @@ def test_generalized_illogical_and_non_transportable_item_rejection():
     print("OK: Generalized non-transportable items (pets, passengers, hazardous, abstract) and unrecognized items correctly rejected.")
 
 
+def test_stt_phone_homophones_and_time_normalization():
+    # 1. Phone number with STT homophone ('to' for '2') resolves to clean 10-digit number
+    res_phone, err_phone = validation.normalize_phone("6 to 387 51200", "+91")
+    assert res_phone == "+916238751200"
+    assert err_phone is None
+
+    # 2. Time normalization converts 'in the morning' -> 'Morning'
+    res_time, err_time = validation.normalize_time("in the morning")
+    assert res_time == "Morning"
+    assert err_time is None
+
+    # 3. Time normalization converts 'around 10am' -> '10:00 AM'
+    res_time2, err_time2 = validation.normalize_time("around 10am")
+    assert res_time2 == "10:00 AM"
+    assert err_time2 is None
+    print("OK: STT phone homophones ('to' -> 2) resolved to 10-digit phone and time 'in the morning' normalized to 'Morning'.")
+
+
 if __name__ == "__main__":
     test_ambiguous_load_not_accepted_blindly()
     test_correction_overwrites_and_flags_confirm_back()
@@ -380,6 +398,8 @@ if __name__ == "__main__":
     test_multi_country_phone_digit_length_validation()
     test_tails_homophone_and_item_quantity_check()
     test_generalized_illogical_and_non_transportable_item_rejection()
+    test_stt_phone_homophones_and_time_normalization()
     print("\nAll offline control-flow tests passed.")
+
 
 
