@@ -421,10 +421,6 @@ export function useSpeech() {
         return;
       }
       window.speechSynthesis.cancel();
-      if (mutedRef.current) {
-        resolve();
-        return;
-      }
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.95;
       utterance.pitch = 1.08;
@@ -434,7 +430,16 @@ export function useSpeech() {
         utterance.voice = voice;
         utterance.lang = voice.lang;
       }
-      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+        if (mutedRef.current && "speechSynthesis" in window) {
+          try {
+            window.speechSynthesis.pause();
+          } catch {
+            /* no-op */
+          }
+        }
+      };
       utterance.onend = () => {
         setIsSpeaking(false);
         resolve();
@@ -456,11 +461,28 @@ export function useSpeech() {
 
   const toggleMuted = useCallback(() => {
     setIsMuted((muted) => {
-      if (!muted && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-        setIsSpeaking(false);
+      const nextMuted = !muted;
+      mutedRef.current = nextMuted;
+      if ("speechSynthesis" in window) {
+        if (nextMuted) {
+          if (window.speechSynthesis.speaking) {
+            try {
+              window.speechSynthesis.pause();
+            } catch {
+              /* no-op */
+            }
+          }
+        } else {
+          if (window.speechSynthesis.paused) {
+            try {
+              window.speechSynthesis.resume();
+            } catch {
+              /* no-op */
+            }
+          }
+        }
       }
-      return !muted;
+      return nextMuted;
     });
   }, []);
 

@@ -80,7 +80,7 @@ The conversation is modeled as a 4-step state graph:
 | **Country Name Conversion** | Converts spoken country names (*"India"*, *"US"*, *"UK"*, *"Australia"*, *"UAE"*) into standard calling codes (`+91`, `+1`, `+44`, `+61`, `+971`) and validates phone length against the country specification. |
 | **Past Date Rejection** | Parses natural dates (*"tomorrow"*, *"next Monday"*, *"15th Sept"*) relative to reference time via `dateparser`. Rejects past dates and prompts for today or future dates. |
 | **Oversized Load Detection** | Detects fleet load violations (*"container"*, *"factory"*, *"10 tons"*) and prompts user to clarify items or split the load. |
-| **Continuous Mic Toggle** | User retains full control to turn Mic ON/OFF. Silence does not force mic shutdown; the continuous loop waits and resumes listening automatically until toggled OFF. |
+| **Tap-to-Talk Mic Control** | Microphone is BLUE when idle. Tapping mic turns it RED to record audio; tapping again turns it back to BLUE and triggers backend processing *only after* recording completes. |
 | **Corrections & Overwrites** | Overwrites earlier values when `is_correction` is set, logs old/new values in `corrections_log`, and re-triggers confirm-back for critical fields. |
 
 ---
@@ -101,7 +101,7 @@ voice-booking-agent/
 │   │       ├── llm.py              # Groq tool call & generation client
 │   │       └── graph.py            # LangGraph state machine workflow
 │   ├── tests/
-│   │   └── test_graph_offline.py   # Deterministic control-flow unit tests (16 tests)
+│   │   └── test_graph_offline.py   # Deterministic control-flow unit tests (17 tests)
 │   ├── requirements.txt
 │   ├── .env.example
 │   └── Dockerfile
@@ -176,7 +176,7 @@ Start the Next.js development server:
 npm run dev
 ```
 
-Open `http://localhost:3000` in Google Chrome, click **"🎤 Turn On Microphone"** to toggle continuous listening, and speak your booking request!
+Open `http://localhost:3000` in Google Chrome, click the blue **"🎤"** mic button to start recording (turns red), tap it again to stop & process (turns back to blue), and hear the agent's response!
 
 ---
 

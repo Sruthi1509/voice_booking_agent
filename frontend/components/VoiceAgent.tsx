@@ -203,23 +203,29 @@ export default function VoiceAgent() {
         >
           {isRecording ? "🔴" : "🎤"}
         </button>
-        <div className="text-xs text-neutral-400">
+        <button
+          type="button"
+          onClick={toggleMuted}
+          className={`h-14 w-14 rounded-full flex items-center justify-center text-xl shrink-0 transition border
+            ${isMuted 
+              ? "bg-red-950/80 border-red-800 text-red-300 hover:bg-red-900" 
+              : "bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700"}`}
+          aria-label={isMuted ? "Unmute speaker voice" : "Mute speaker voice"}
+          title={isMuted ? "Speaker muted — tap to unmute & hear balance of conversation" : "Speaker active — tap to pause voice"}
+        >
+          {isMuted ? "🔇" : "🔊"}
+        </button>
+        <div className="text-xs text-neutral-400 flex-1">
           {isRecording
             ? "Recording… Tap mic when done to stop & start conversation turn"
             : busy
             ? "Processing conversation…"
             : isSpeaking
-            ? "Agent speaking (Tap mic to start recording)"
-            : "Mic OFF — Tap to start recording"}
+            ? isMuted
+              ? "Agent speaking (Speaker muted… Tap 🔊 to hear balance)"
+              : "Agent speaking (Tap mic to start recording)"
+            : "Mic OFF — Tap mic to start recording"}
         </div>
-        <button
-          type="button"
-          onClick={toggleMuted}
-          className="ml-auto rounded-lg border border-neutral-700 px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-800"
-          aria-label={isMuted ? "Unmute assistant voice" : "Mute assistant voice"}
-        >
-          {isMuted ? "Unmute voice" : "Mute voice"}
-        </button>
       </div>
 
       <form onSubmit={handleManualSubmit} className="flex gap-2">
