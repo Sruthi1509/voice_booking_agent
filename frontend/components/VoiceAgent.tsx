@@ -17,7 +17,7 @@ export default function VoiceAgent() {
   const [error, setError] = useState<string | null>(null);
   const [failedMessage, setFailedMessage] = useState<string | null>(null);
   const [manualInput, setManualInput] = useState("");
-  const [isMicActive, setIsMicActive] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
 
   const {
     supported,
@@ -25,7 +25,8 @@ export default function VoiceAgent() {
     interimTranscript,
     isSpeaking,
     isMuted,
-    listenOnce,
+    startRecording,
+    stopRecording,
     stopListening,
     speak,
     stopSpeaking,
@@ -34,8 +35,6 @@ export default function VoiceAgent() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const hasInitializedRef = useRef(false);
-  const isMicActiveRef = useRef(false);
-  const loopRunningRef = useRef(false);
   const sessionIdRef = useRef<string | null>(null);
   const missingFieldsRef = useRef<string[]>([]);
 
@@ -80,37 +79,6 @@ export default function VoiceAgent() {
     [applyResponseData, speak]
   );
 
-  const startContinuousListeningLoop = useCallback(async () => {
-    if (loopRunningRef.current) return;
-    loopRunningRef.current = true;
-
-    while (isMicActiveRef.current && supported) {
-      if (isSpeaking) {
-        stopSpeaking();
-      }
-
-      const transcript = await listenOnce({
-        itemHint: missingFieldsRef.current[0] === "load_description",
-      });
-
-      if (!isMicActiveRef.current) break;
-
-      if (!transcript.trim()) {
-        // Silence or no speech detected in this cycle.
-        // Wait briefly and loop back as long as user keeps Mic ON.
-        await new Promise((r) => setTimeout(r, 400));
-        continue;
-      }
-
-      // Valid utterance captured! Send to backend and speak reply
-      await runTurnProcess(transcript, true);
-
-      if (!isMicActiveRef.current) break;
-    }
-
-    loopRunningRef.current = false;
-  }, [supported, isSpeaking, stopSpeaking, listenOnce, runTurnProcess]);
-
   const init = useCallback(async () => {
     setError(null);
     setBusy(true);
@@ -133,20 +101,23 @@ export default function VoiceAgent() {
     init();
   }, [init]);
 
-  const handleMicToggle = useCallback(() => {
-    if (isMicActiveRef.current) {
-      // User turning Mic OFF
-      isMicActiveRef.current = false;
-      setIsMicActive(false);
-      stopListening();
-      stopSpeaking();
+  const handleMicClick = useCallback(async () => {
+    if (isRecording) {
+      // User tapped to STOP recording -> turn mic back to BLUE, stop recording, then process turn
+      setIsRecording(false);
+      const text = await stopRecording();
+      void runTurnProcess(text, true);
     } else {
-      // User turning Mic ON
-      isMicActiveRef.current = true;
-      setIsMicActive(true);
-      void startContinuousListeningLoop();
+      // User tapped to START recording -> turn mic to RED and record audio
+      if (isSpeaking) {
+        stopSpeaking();
+      }
+      setIsRecording(true);
+      startRecording({
+        itemHint: missingFieldsRef.current[0] === "load_description",
+      });
     }
-  }, [startContinuousListeningLoop, stopListening, stopSpeaking]);
+  }, [isRecording, isSpeaking, stopSpeaking, startRecording, stopRecording, runTurnProcess]);
 
   const handleManualSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -161,8 +132,7 @@ export default function VoiceAgent() {
   );
 
   const handleRestart = useCallback(async () => {
-    isMicActiveRef.current = false;
-    setIsMicActive(false);
+    setIsRecording(false);
     stopListening();
     stopSpeaking();
     if (sessionId) await resetConversation(sessionId);
@@ -224,29 +194,23 @@ export default function VoiceAgent() {
 
       <div className="flex items-center gap-3">
         <button
-          onClick={handleMicToggle}
-          disabled={!supported}
+          onClick={handleMicClick}
+          disabled={!supported || busy}
           className={`h-14 w-14 rounded-full flex items-center justify-center text-xl shrink-0 transition
-            ${isMicActive ? "bg-red-600 animate-pulse shadow-lg shadow-red-600/50" : "bg-blue-600 hover:bg-blue-500"}
+            ${isRecording ? "bg-red-600 animate-pulse shadow-lg shadow-red-600/50" : "bg-blue-600 hover:bg-blue-500"}
             disabled:opacity-40 disabled:cursor-not-allowed`}
-          aria-label={isMicActive ? "Turn Off Microphone" : "Turn On Microphone"}
+          aria-label={isRecording ? "Stop recording and send" : "Start recording"}
         >
-          {isMicActive ? "🎙️" : "🎤"}
+          {isRecording ? "🔴" : "🎤"}
         </button>
         <div className="text-xs text-neutral-400">
-          {isMicActive
-            ? status === "listening"
-              ? "Mic ON (Listening continuously… Tap to turn OFF)"
-              : isSpeaking
-              ? "Agent speaking (Mic ON… Tap to interrupt)"
-              : busy
-              ? "Processing input…"
-              : "Mic ON (Waiting for speech…)"
-            : isSpeaking
-            ? "Agent speaking (Mic OFF)"
+          {isRecording
+            ? "Recording… Tap mic when done to stop & start conversation turn"
             : busy
-            ? "Thinking…"
-            : "Mic OFF (Tap button to turn ON continuous listening)"}
+            ? "Processing conversation…"
+            : isSpeaking
+            ? "Agent speaking (Tap mic to start recording)"
+            : "Mic OFF — Tap to start recording"}
         </div>
         <button
           type="button"

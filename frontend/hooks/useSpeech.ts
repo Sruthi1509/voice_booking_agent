@@ -294,8 +294,116 @@ export function useSpeech() {
     });
   }, []);
 
+  const isRecordingRef = useRef(false);
+  const accumulatedTranscriptRef = useRef("");
+  const resolveStopRef = useRef<((text: string) => void) | null>(null);
+  const currentItemHintRef = useRef(false);
+
+  const startRecording = useCallback((options: ListenOptions = {}) => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setSupported(false);
+      return;
+    }
+
+    currentItemHintRef.current = Boolean(options.itemHint);
+    isRecordingRef.current = true;
+    accumulatedTranscriptRef.current = "";
+    setInterimTranscript("");
+    setStatus("listening");
+
+    const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
+    recognition.lang = "en-IN";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 5;
+
+    recognition.onresult = (event: any) => {
+      let interim = "";
+      let finalPart = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = pickBestAlternative(event.results[i], currentItemHintRef.current);
+        if (event.results[i].isFinal) {
+          finalPart += (finalPart ? " " : "") + transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+      if (finalPart) {
+        accumulatedTranscriptRef.current += (accumulatedTranscriptRef.current ? " " : "") + finalPart;
+      }
+      const combinedLive = (accumulatedTranscriptRef.current + " " + interim).trim();
+      setInterimTranscript(combinedLive);
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "no-speech" || event.error === "aborted") return;
+      if (
+        event.error === "audio-capture" ||
+        event.error === "not-allowed" ||
+        event.error === "service-not-allowed"
+      ) {
+        isRecordingRef.current = false;
+        setStatus("error");
+      }
+    };
+
+    recognition.onend = () => {
+      if (isRecordingRef.current) {
+        try {
+          recognition.start();
+        } catch {
+          /* no-op */
+        }
+      } else {
+        setStatus("idle");
+        setInterimTranscript("");
+        let raw = accumulatedTranscriptRef.current.trim();
+        let cleaned = collapseRepeatedPhrase(raw);
+        if (currentItemHintRef.current) {
+          cleaned = collapseRepeatedPhrase(applyItemHomophones(cleaned));
+        }
+        if (resolveStopRef.current) {
+          resolveStopRef.current(cleaned);
+          resolveStopRef.current = null;
+        }
+      }
+    };
+
+    try {
+      recognition.start();
+    } catch {
+      isRecordingRef.current = false;
+      setStatus("error");
+    }
+  }, []);
+
+  const stopRecording = useCallback((): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!isRecordingRef.current || !recognitionRef.current) {
+        setStatus("idle");
+        setInterimTranscript("");
+        resolve(accumulatedTranscriptRef.current.trim());
+        return;
+      }
+
+      isRecordingRef.current = false;
+      resolveStopRef.current = resolve;
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        setStatus("idle");
+        setInterimTranscript("");
+        resolve(accumulatedTranscriptRef.current.trim());
+      }
+    });
+  }, []);
+
   const stopListening = useCallback(() => {
     stopRequestedRef.current = true;
+    isRecordingRef.current = false;
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
@@ -363,6 +471,8 @@ export function useSpeech() {
     isSpeaking,
     isMuted,
     listenOnce,
+    startRecording,
+    stopRecording,
     stopListening,
     speak,
     stopSpeaking,
