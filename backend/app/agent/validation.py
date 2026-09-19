@@ -36,6 +36,12 @@ OVERSIZED_LOAD_PATTERNS = [
 
 # Common speech-to-text confusions for household items being moved.
 ITEM_HOMOPHONES = {
+    "tails": "chairs",
+    "tail": "chair",
+    "tiles": "chairs",
+    "tile": "chair",
+    "tales": "chairs",
+    "tale": "chair",
     "share": "chair",
     "shares": "chairs",
     "cheer": "chair",
@@ -44,11 +50,26 @@ ITEM_HOMOPHONES = {
     "chear": "chair",
     "chears": "chairs",
     "shair": "chair",
+    "shairs": "chairs",
+    "char": "chair",
+    "chars": "chairs",
+    "chare": "chair",
+    "chares": "chairs",
     "sofer": "sofa",
     "sofar": "sofa",
+    "sopher": "sofa",
     "bridge": "fridge",
     "frig": "fridge",
     "frige": "fridge",
+    "freeze": "fridge",
+    "freezer": "fridge",
+    "matras": "mattress",
+    "matress": "mattress",
+    "cupboard": "cupboard",
+    "cubboard": "cupboard",
+    "almeera": "almirah",
+    "teble": "table",
+    "tabel": "table",
 }
 
 VEHICLE_TIERS = [
@@ -257,11 +278,86 @@ def is_repeated_value(existing: str, incoming: str) -> bool:
     return leftover in ("", old)
 
 
+# Plural items where quantity significantly impacts vehicle tier if unspecified
+QUANTITY_SENSITIVE_ITEMS = [
+    r"\bchairs\b", r"\btables\b", r"\bsofas\b", r"\bbeds\b",
+    r"\bfridges\b", r"\bcupboards\b", r"\bappliances\b",
+    r"\bboxes\b", r"\bcots\b", r"\btvs\b", r"\bwashing machines\b",
+    r"\balmirahs\b", r"\bmattresses\b",
+]
+
+# Patterns that indicate a quantity, count, or scope was specified
+QUANTITY_INDICATORS = [
+    r"\b\d+\b",  # numbers like 1, 2, 5
+    r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|fifty|hundred)\b",
+    r"\b(a|an|single|couple|few|several|some|multiple|bhk|house|home|room|full|all|entire|pack|set|pair)\b",
+]
+
+
+def has_quantity_indicator(text: str) -> bool:
+    lowered = text.lower()
+    for pattern in QUANTITY_INDICATORS:
+        if re.search(pattern, lowered):
+            return True
+    return False
+
+
+def is_quantity_missing_for_items(text: str) -> tuple[bool, Optional[str]]:
+    lowered = text.lower()
+    matched_items = []
+    for pattern in QUANTITY_SENSITIVE_ITEMS:
+        match = re.search(pattern, lowered)
+        if match:
+            matched_items.append(match.group(0))
+
+    if matched_items and not has_quantity_indicator(lowered):
+        item_str = matched_items[0]
+        return True, (
+            f"Could you please specify how many {item_str} or items you're moving? "
+            f"The number of items helps us assign the right vehicle size (like a Two-wheeler, Mini-van, or Mini-truck)."
+        )
+    return False, None
+
+
+NON_TRANSPORTABLE_PATTERNS = [
+    # Live animals & pets
+    (r"\b(dogs?|cats?|pets?|animals?|livestock|cows?|cattle|sheep|goats?|birds?|snakes?|horses?|pigs?|chickens?)\b",
+     "live animals or pets"),
+    # People & passengers
+    (r"\b(passengers?|people|persons?|kids?|children|humans?|relatives?|family)\b",
+     "passengers or people"),
+    # Hazardous / Illegal materials
+    (r"\b(explosives?|fireworks?|gasoline|petrol|diesel|flammables?|poisons?|toxic|weapons?|guns?|drugs?|contraband)\b",
+     "hazardous, flammable, or illegal materials"),
+    # Abstract or non-physical items / natural elements
+    (r"\b(clouds?|weather|sky|ocean|sea|sunlight|time|air|thoughts?|ghosts?|volcanoes?|volcano)\b",
+     "non-physical items or natural elements"),
+]
+
+RECOGNIZED_GOODS_KEYWORDS = [
+    "chair", "chairs", "table", "tables", "sofa", "sofas", "bed", "beds",
+    "fridge", "fridges", "refrigerator", "cupboard", "cupboards", "almirah",
+    "almirahs", "mattress", "mattresses", "box", "boxes", "luggage", "bag", "bags",
+    "appliance", "appliances", "tv", "television", "washing machine", "ac",
+    "air conditioner", "fan", "microwave", "desk", "desks", "cot", "cots",
+    "carton", "cartons", "plant", "plants", "bike", "scooter", "motorcycle",
+    "bicycle", "furniture", "household", "house", "home", "office", "1bhk",
+    "2bhk", "3bhk", "shift", "shifting", "moving", "goods", "cargo",
+    "inventory", "document", "documents", "envelope", "envelopes", "clothes",
+    "books", "utensils", "suite", "set", "stuff", "thing", "things", "item",
+    "items", "package", "packages", "parcel", "parcels", "treadmill", "piano",
+    "aquarium", "mirror", "wardrobe", "wardrobes", "cabinet", "cabinets",
+    "shelf", "shelves", "stand", "trunk", "trunks", "suitcase", "suitcases",
+    "equipment", "machinery", "computer", "laptop", "monitor", "printer",
+]
+
+
 def check_load_feasibility(raw_description: str) -> tuple[Optional[str], Optional[str]]:
     """Returns (suggested_vehicle_or_None, error_message_or_None).
-    error is set only when the load is likely beyond any vehicle we offer."""
-    text = raw_description.lower()
+    Checks oversized loads, non-transportable items, unrecognized/illogical loads, and missing quantities."""
+    text = raw_description.lower().strip()
 
+    # 1. Oversized load check
     for pattern in OVERSIZED_LOAD_PATTERNS:
         if re.search(pattern, text):
             return None, (
@@ -270,12 +366,41 @@ def check_load_feasibility(raw_description: str) -> tuple[Optional[str], Optiona
                 "items, or split this into multiple bookings?"
             )
 
+    # 2. Non-transportable items check (animals, passengers, hazardous, abstract)
+    for pattern, category_label in NON_TRANSPORTABLE_PATTERNS:
+        if re.search(pattern, text):
+            return None, (
+                f"We are unable to transport {category_label}. "
+                "Our service is strictly for moving household items, furniture, appliances, and cargo boxes. "
+                "Could you please confirm what household goods or items you need moved?"
+            )
+
+    # 3. Check for completely unrecognized / illogical item descriptions
+    words = [w for w in re.findall(r"\b[a-z]+\b", text) if len(w) > 2]
+    has_recognized_goods = any(
+        re.search(r"\b" + re.escape(kw) + r"\b", text) for kw in RECOGNIZED_GOODS_KEYWORDS
+    ) or bool(re.search(r"\b\d+\b", text))
+    
+    if words and not has_recognized_goods:
+        return None, (
+            f"I couldn't confirm '{raw_description}' as a standard transportable item or household good. "
+            "We move furniture, appliances, boxes, and household items. "
+            "Could you please confirm or re-state what item you need moved?"
+        )
+
+    # 4. Missing quantity check for plural items
+    missing_qty, qty_err = is_quantity_missing_for_items(text)
+    if missing_qty:
+        return None, qty_err
+
+    # 5. Vehicle tier determination
     for keywords, vehicle, _capacity in VEHICLE_TIERS:
         if any(k in text for k in keywords):
             return vehicle, None
 
     # Unknown/ambiguous load description -- not an error, just no auto-suggestion.
     return None, None
+
 
 
 def normalize_country_code(raw_text: str) -> tuple[Optional[str], Optional[str]]:

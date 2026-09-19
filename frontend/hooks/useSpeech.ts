@@ -18,6 +18,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type SpeechStatus = "idle" | "listening" | "no_speech" | "error";
 
 const ITEM_HOMOPHONES: Record<string, string> = {
+  tails: "chairs",
+  tail: "chair",
+  tiles: "chairs",
+  tile: "chair",
+  tales: "chairs",
+  tale: "chair",
   share: "chair",
   shares: "chairs",
   cheer: "chair",
@@ -25,6 +31,9 @@ const ITEM_HOMOPHONES: Record<string, string> = {
   sheer: "chair",
   chear: "chair",
   shair: "chair",
+  shairs: "chairs",
+  char: "chair",
+  chars: "chairs",
   sofer: "sofa",
   sofar: "sofa",
   bridge: "fridge",

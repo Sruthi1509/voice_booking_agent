@@ -307,6 +307,59 @@ def test_multi_country_phone_digit_length_validation():
     print("OK: Multi-country phone digit validation strictly enforces specs for India, US, UAE, and others.")
 
 
+def test_tails_homophone_and_item_quantity_check():
+    # 1. Homophone correction: "tails" -> "chairs", "2 tails" -> "2 chairs"
+    assert validation.correct_item_homophones("tails") == "chairs"
+    assert validation.correct_item_homophones("2 tails") == "2 chairs"
+
+    # 2. Missing item quantity for big items flags a validation error asking for quantity
+    veh, err = validation.check_load_feasibility("chairs")
+    assert veh is None
+    assert err is not None and "specify how many chairs" in err
+
+    # 3. Item quantity provided resolves load and suggests vehicle
+    veh_good, err_good = validation.check_load_feasibility("5 chairs")
+    assert veh_good == "Mini-van (Tata Ace class)"
+    assert err_good is None
+
+    veh_tails_good, err_tails_good = validation.check_load_feasibility(
+        validation.correct_item_homophones("2 tails")
+    )
+    assert veh_tails_good == "Mini-van (Tata Ace class)"
+    assert err_tails_good is None
+
+    print("OK: STT 'tails' mapped to 'chairs' and missing item quantity flags error requesting item count.")
+
+
+def test_generalized_illogical_and_non_transportable_item_rejection():
+    # 1. Live animals rejected
+    veh_pet, err_pet = validation.check_load_feasibility("2 dogs and a cat")
+    assert veh_pet is None
+    assert err_pet is not None and "unable to transport live animals or pets" in err_pet
+
+    # 2. Passengers / people rejected
+    veh_pass, err_pass = validation.check_load_feasibility("3 passengers")
+    assert veh_pass is None
+    assert err_pass is not None and "unable to transport passengers or people" in err_pass
+
+    # 3. Hazardous materials rejected
+    veh_haz, err_haz = validation.check_load_feasibility("gasoline")
+    assert veh_haz is None
+    assert err_haz is not None and "hazardous" in err_haz
+
+    # 4. Natural elements / non-physical items rejected
+    veh_vol, err_vol = validation.check_load_feasibility("volcano")
+    assert veh_vol is None
+    assert err_vol is not None and "unable to transport non-physical items or natural elements" in err_vol
+
+    # 5. Illogical / unrecognized item prompts user to confirm/re-state item
+    veh_ill, err_ill = validation.check_load_feasibility("spaceship")
+    assert veh_ill is None
+    assert err_ill is not None and "confirm or re-state what item you need moved" in err_ill
+
+    print("OK: Generalized non-transportable items (pets, passengers, hazardous, abstract) and unrecognized items correctly rejected.")
+
+
 if __name__ == "__main__":
     test_ambiguous_load_not_accepted_blindly()
     test_correction_overwrites_and_flags_confirm_back()
@@ -325,4 +378,8 @@ if __name__ == "__main__":
     test_location_alias_and_close_suggestion()
     test_country_name_conversion()
     test_multi_country_phone_digit_length_validation()
+    test_tails_homophone_and_item_quantity_check()
+    test_generalized_illogical_and_non_transportable_item_rejection()
     print("\nAll offline control-flow tests passed.")
+
+
