@@ -413,6 +413,8 @@ export function useSpeech() {
     }
   }, []);
 
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
   /** Speaks text aloud. Can be interrupted (barge-in) via stopSpeaking(). */
   const speak = useCallback((text: string): Promise<void> => {
     return new Promise((resolve) => {
@@ -425,6 +427,9 @@ export function useSpeech() {
       utterance.rate = 0.95;
       utterance.pitch = 1.08;
       utterance.lang = "en-IN";
+      utterance.volume = mutedRef.current ? 0 : 1;
+      activeUtteranceRef.current = utterance;
+
       const voice = pickFemaleVoice(voicesRef.current.length ? voicesRef.current : window.speechSynthesis.getVoices());
       if (voice) {
         utterance.voice = voice;
@@ -432,20 +437,15 @@ export function useSpeech() {
       }
       utterance.onstart = () => {
         setIsSpeaking(true);
-        if (mutedRef.current && "speechSynthesis" in window) {
-          try {
-            window.speechSynthesis.pause();
-          } catch {
-            /* no-op */
-          }
-        }
       };
       utterance.onend = () => {
         setIsSpeaking(false);
+        activeUtteranceRef.current = null;
         resolve();
       };
       utterance.onerror = () => {
         setIsSpeaking(false);
+        activeUtteranceRef.current = null;
         resolve();
       };
       window.speechSynthesis.speak(utterance);
@@ -455,6 +455,7 @@ export function useSpeech() {
   const stopSpeaking = useCallback(() => {
     if ("speechSynthesis" in window) {
       window.speechSynthesis.cancel();
+      activeUtteranceRef.current = null;
       setIsSpeaking(false);
     }
   }, []);
@@ -463,24 +464,8 @@ export function useSpeech() {
     setIsMuted((muted) => {
       const nextMuted = !muted;
       mutedRef.current = nextMuted;
-      if ("speechSynthesis" in window) {
-        if (nextMuted) {
-          if (window.speechSynthesis.speaking) {
-            try {
-              window.speechSynthesis.pause();
-            } catch {
-              /* no-op */
-            }
-          }
-        } else {
-          if (window.speechSynthesis.paused) {
-            try {
-              window.speechSynthesis.resume();
-            } catch {
-              /* no-op */
-            }
-          }
-        }
+      if (activeUtteranceRef.current) {
+        activeUtteranceRef.current.volume = nextMuted ? 0 : 1;
       }
       return nextMuted;
     });

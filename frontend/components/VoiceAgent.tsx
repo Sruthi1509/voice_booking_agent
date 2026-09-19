@@ -66,13 +66,13 @@ export default function VoiceAgent() {
         const res = await sendTurn(activeSession, text);
         setFailedMessage(null);
         applyResponseData(res);
+        setBusy(false);
         if ("speechSynthesis" in window && res.agent_message) {
-          await speak(res.agent_message);
+          void speak(res.agent_message);
         }
       } catch (e: any) {
         setFailedMessage(text);
         setError(e.message || "Something went wrong. Please try again.");
-      } finally {
         setBusy(false);
       }
     },
@@ -85,12 +85,12 @@ export default function VoiceAgent() {
     try {
       const res = await startConversation();
       applyResponseData(res);
+      setBusy(false);
       if ("speechSynthesis" in window && res.agent_message) {
-        await speak(res.agent_message);
+        void speak(res.agent_message);
       }
     } catch (e: any) {
       setError(e.message || "Failed to start conversation.");
-    } finally {
       setBusy(false);
     }
   }, [applyResponseData, speak]);
